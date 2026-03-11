@@ -1,0 +1,11 @@
+# Binaries for programs and plugins
+bin/
+
+# Certificates
+certs/
+
+# Java stuff
+.java-version
+
+# macOS specific files
+.DS_Store

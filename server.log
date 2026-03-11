@@ -1,0 +1,2 @@
+2026/03/11 16:55:09 Starting server on https://localhost:8443
+2026/03/11 16:55:09 Server failed to start: listen tcp :8443: bind: address already in use
