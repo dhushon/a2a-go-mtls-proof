@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/a2aproject/a2a-go v0.3.9 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

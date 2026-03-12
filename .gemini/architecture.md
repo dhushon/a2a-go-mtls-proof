@@ -1,46 +1,47 @@
-# System Architecture: A2A Zero-Trust Proof of Concept
+# System Architecture: Zero-Trust Multi-Agent Flow
 
-This document describes the design of the agent-to-agent (A2A) zero-trust architecture.
+This document describes the design and logic distribution of the agentic system.
 
-## 1. Security Overview
+## 1. Directory Strategy: Shared vs. Exclusive
 
-The system uses a layered approach to security:
-- **Transport Security (mTLS)**: Verifies the identity of the service presenting the certificate.
-- **Application Security (OBO Token)**: Verifies the identity of the user on whose behalf the service is acting.
-- **Binding (RFC 8705)**: Bridges these layers by ensuring the `oboToken` can only be used by the service possessing the specific certificate identified in the token's `cnf` claim.
+To keep the codebase modular and scalable, logic is partitioned based on its scope of use:
 
-## 2. Metadata & Context Propagation (`pkg/agentcontext`)
+-   **`pkg/` (Shared)**: Contains core utilities used by every component in the system.
+    -   `auth/`: Certificate loading and RFC 8705 thumbprint calculation.
+    -   `agentcontext/`: Session identity and automated header propagation.
+    -   `observability/`: Tiered metrics and OTel SDK initialization.
+    -   `weather/`: Weather research logic used by both the provider and consumers.
+-   **`server/pkg/` (Server-Only)**: Logic exclusive to responders.
+    -   `middleware/`: Standardized security enforcement (mTLS Binding).
+-   **`client/pkg/` (Client-Only)**: Logic exclusive to requesters.
+    -   `packing/`: Domain-specific analysis (e.g., shorts vs. pants decision engine).
 
-The `Metadata` struct carries session identity through the system:
-- `SessionID`: Uniquely identifies the end-to-end user session.
-- `TraceID`: Correlates distributed operations across multiple agents.
-- `ParentID`: Identifies the immediate caller in the agentic chain.
+## 2. Multi-Agent Workflow
 
-### Lifecycle of a Request
-1.  **Requester (Client)**: 
-    - Sets metadata in a `Metadata` struct.
-    - Uses `InjectIntoRequest(r)` to set `X-Session-ID`, `X-Trace-ID`, etc.
-2.  **Responder (Server)**:
-    - `agentcontext.Middleware` extracts headers.
-    - Hydrates the Go `context` with a structured `Metadata` object.
-    - Business logic accesses metadata via `agentcontext.From(ctx)`.
+The system demonstrates a chain of autonomous agents:
 
-## 3. Observability Strategy (`pkg/observability`)
+1.  **Requester Agent (`packing_main.go`)**:
+    -   Acts as the entry point for a user session.
+    -   Generates an OBO token bound to its mTLS certificate.
+    -   Calls the Weather Agent via mTLS.
+2.  **Responder Agent (`weather_main.go`)**:
+    -   Validates the incoming requester's identity via `middleware.MTLSBindingMiddleware`.
+    -   Performs weather research using the `weather` package.
+    -   Returns findings (forecast + probability chart).
+3.  **Analysis**:
+    -   The Requester Agent consumes the weather data.
+    -   Utilizes the `packing` package to make an autonomous decision based on temperature thresholds.
 
-The system implements a tiered monitoring approach based on the `AGENT_OBSERVABILITY_LEVEL` environment variable.
+## 3. Security Implementation
 
-### Tiered Levels
-- **Level 1 (Basic)**: Records latency and iteration counts.
-- **Level 2 (Cost)**: Level 1 + records token usage and financial cost.
-- **Level 3 (Debug)**: Level 2 + starts OpenTelemetry trace spans for every task.
+The system enforces zero-trust at every hop:
+-   **Transport**: mTLS verifies service-level identity.
+-   **Application**: OBO Token verifies user-level identity.
+-   **Binding**: The `x5t#S256` thumbprint ensures that even if an OBO token is intercepted, it is useless without the requester's private key.
 
-### Automatic Correlation
-Every log entry emitted by `pkg/logger` is designed to be correlating with the active session and trace IDs extracted from the context, ensuring a "single pane of glass" view during analysis.
+## 4. Observability
 
-## 4. Architectural Patterns
-
-### Middleware-Based Enforcement
-Security and context extraction are handled as decorators (middleware) around the core business logic. This keeps the application code focused and ensures consistent enforcement.
-
-### Stateless Re-entrance
-By externalizing `Metadata` and session state into a structured context, the system is designed for "re-entrance." An agent session can be paused, persisted to a store, and re-hydrated later by restoring the `Metadata` object into a new context.
+Every agent hop records:
+-   **Latency**: Time spent in the research and analysis phases.
+-   **Cost**: Simulated token counts and USD costs per agentic step.
+-   **Tracing**: (Level 3) Full distributed trace showing the relationship between the Packing Agent and the Weather Agent.

@@ -21,14 +21,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// Claims defines the JWT structure including the 'cnf' (confirmation) claim.
-type Claims struct {
-	jwt.RegisteredClaims
-	Confirmation struct {
-		X5tS256 string `json:"x5t#S256"` // SHA-256 thumbprint of the cert
-	} `json:"cnf"`
-}
-
 // In a real OBO flow, this function would make a request to an identity provider.
 func getOBOToken(userSubject string, tlsConfig *tls.Config) (string, error) {
 	// 1. Calculate the certificate thumbprint
@@ -44,7 +36,7 @@ func getOBOToken(userSubject string, tlsConfig *tls.Config) (string, error) {
 	encodedThumbprint := base64.RawURLEncoding.EncodeToString(fingerprint[:])
 
 	// 2. Create the claims for the JWT
-	claims := Claims{
+	claims := auth.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "simulated-idp",
 			Subject:   userSubject,

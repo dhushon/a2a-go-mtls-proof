@@ -1,54 +1,50 @@
-# A2A Go mTLS Proof of Concept (OBO Token Binding)
+# A2A Go mTLS Proof of Concept (Zero-Trust Agents)
 
-This project demonstrates a zero-trust, agent-to-agent (A2A) communication pattern in Go. It combines **mTLS (Mutual TLS)** at the transport layer with **OAuth2 "On-Behalf-Of" (OBO) token exchange** at the application layer, implementing certificate-bound tokens as defined in **RFC 8705**.
+This project demonstrates a zero-trust, multi-agent communication pattern in Go. It implements certificate-bound tokens (RFC 8705) to ensure that agent-to-agent calls are cryptographically linked to the transport layer identity.
 
-## Key Features
+## Key Capabilities
 
-- **mTLS Authentication**: Both client and server authenticate using certificates signed by a shared Test CA.
-- **OBO Token Binding**: Tokens are cryptographically bound to the client's mTLS certificate thumbprint (`cnf` claim with `x5t#S256`).
-- **Context Propagation**: Automatic metadata cascading (SessionID, TraceID, ParentID) via `pkg/agentcontext`.
-- **Tiered Observability**: Metrics for latency, token usage, and cost via `pkg/observability` (OpenTelemetry).
-- **Structured Logging**: Context-aware, JSON-based logging via `pkg/logger`.
+- **Zero-Trust Handshake**: Combines mTLS with OBO (On-Behalf-Of) token binding.
+- **Multi-Agent Workflows**:
+    - **Weather Agent**: Performs 10-day research using 50 years of historical data (simulated).
+    - **Packing Agent**: Consumes weather research to make autonomous "what to pack" decisions.
+- **Rationalized Architecture**: 
+    - Shared core logic in `./pkg`.
+    - Server-exclusive middleware in `./server/pkg`.
+    - Client-exclusive analysis in `./client/pkg`.
+- **Tiered Observability**: Cost, token, and latency metrics via OpenTelemetry.
 
 ## Project Structure
 
-- `client/`: Requester agent implementation.
-- `server/`: Responder agent implementation.
-- `pkg/agentcontext/`: Metadata extraction/injection and HTTP middleware.
-- `pkg/auth/`: Centralized TLS and certificate handling logic.
-- `pkg/logger/`: Structured logging wrapper.
-- `pkg/observability/`: OpenTelemetry metrics and tracing stack.
+- `client/`: Requester agents (e.g., `packing_main.go`).
+    - `pkg/packing/`: Client-exclusive analysis logic.
+- `server/`: Responder agents (e.g., `weather_main.go`).
+    - `pkg/middleware/`: Server-exclusive HTTP security wrappers.
+- `pkg/`: Shared packages (Auth, Context, Logger, Observability, Weather).
 - `certs/`: (Generated) Test certificates and keys.
 
 ## Quick Start
 
 ### 1. Prerequisites
 - Go 1.26+
-- OpenSSL (for certificate generation)
+- OpenSSL
 
 ### 2. Generate Test Certificates
 ```bash
-# This script creates a Test CA and signed certificates for server and client
-./scripts/generate_certs.sh  # (Or use the openssl commands in the history)
+# Generates CA, server, and client certs with proper SANs
+./scripts/generate_certs.sh
 ```
 
-### 3. Run the Responder Agent (Server)
+### 3. Run the Multi-Agent Flow
+Start the Weather Agent:
 ```bash
-export AGENT_OBSERVABILITY_LEVEL=1  # 0:Off, 1:Basic, 2:Cost, 3:Debug
-go run server/main.go
+AGENT_OBSERVABILITY_LEVEL=1 go run server/weather_main.go
 ```
 
-### 4. Run the Requester Agent (Client)
+In a new terminal, run the Packing Agent:
 ```bash
-export AGENT_OBSERVABILITY_LEVEL=1
-go run client/main.go
+AGENT_OBSERVABILITY_LEVEL=1 go run client/packing_main.go
 ```
 
-## Architectural Design
-
-The project follows a **Middleware-first** approach to security and metadata. The Responder (Server) uses a chain of handlers:
-1. `agentcontext.Middleware`: Extracts metadata from headers and hydrates the Go context.
-2. `MTLSBindingMiddleware`: Validates the mTLS certificate against the OBO token's `cnf` claim.
-3. `taskHandler`: Executes business logic and records observability metrics.
-
-For a detailed design overview, see [.gemini/architecture.md](.gemini/architecture.md).
+## Security & Metadata
+All agents utilize `pkg/agentcontext` for automatic metadata cascading (Session/Trace IDs) and `pkg/auth` for RFC 8705 compliant thumbprint verification.

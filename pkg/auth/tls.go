@@ -1,11 +1,20 @@
 package auth
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"os"
 )
+
+// GetCertificateThumbprint returns the SHA-256 thumbprint of a certificate,
+// formatted as a URL-safe base64 string (RFC 8705).
+func GetCertificateThumbprint(cert *x509.Certificate) string {
+	fingerprint := sha256.Sum256(cert.Raw)
+	return base64.RawURLEncoding.EncodeToString(fingerprint[:])
+}
 
 func GetServerTLSConfig() (*tls.Config, error) {
 	// Load server cert and key
