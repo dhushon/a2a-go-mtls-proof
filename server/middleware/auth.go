@@ -38,11 +38,12 @@ func MTLSBindingMiddleware(next http.Handler) http.Handler {
 
 		// 3. Perform Binding Check using shared utility
 		encodedThumbprint := auth.GetCertificateThumbprint(clientCert)
+		tokenThumbprint := claims.GetThumbprint()
 
-		if claims.Confirmation.X5tS256 != encodedThumbprint {
+		if tokenThumbprint != encodedThumbprint {
 			logger.Warn("Certificate-Token binding mismatch", 
 				"cert_thumbprint", encodedThumbprint,
-				"token_cnf", claims.Confirmation.X5tS256)
+				"token_thumbprint", tokenThumbprint)
 			http.Error(w, "Certificate-Token binding mismatch", http.StatusForbidden)
 			return
 		}

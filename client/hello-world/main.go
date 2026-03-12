@@ -36,16 +36,25 @@ func main() {
 	}
 	ctx := agentcontext.New(context.Background(), md)
 
-	tlsConfig, err := auth.GetClientTLSConfig()
+	tlsConfig, err := auth.GetClientTLSConfig(cfg.A2AServerName)
 	if err != nil {
 		logger.Error("Failed to get TLS config", "error", err)
 		os.Exit(1)
 	}
 
-	// 2. Setup OBO Exchange
+	// Calculate thumbprint for mock binding
 	cert, _ := x509.ParseCertificate(tlsConfig.Certificates[0].Certificate[0])
 	thumbprint := auth.GetCertificateThumbprint(cert)
-	exchange := auth.NewOBOExchange(cfg.OAuthServerType, cfg.OAuthDomain, cfg.OAuthClientID, cfg.OAuthMTLSDomain, thumbprint)
+
+	// 2. Setup OBO Exchange
+	exchange := auth.NewOBOExchange(
+		cfg.OAuthServerType,
+		cfg.OAuthDomain,
+		cfg.OAuthClientID,
+		cfg.OAuthPrivateKeyPath,
+		cfg.OAuthMTLSDomain,
+		thumbprint,
+	)
 
 	// 3. Exchange Token using Context
 	oboToken, err := exchange.ExchangeToken(ctx, "initial-token", "api://responder-agent/access")

@@ -39,16 +39,25 @@ func main() {
 	}
 	ctx := agentcontext.New(context.Background(), md)
 
-	tlsConfig, err := auth.GetClientTLSConfig()
+	tlsConfig, err := auth.GetClientTLSConfig(cfg.A2AServerName)
 	if err != nil {
 		logger.Error("Failed to get TLS config", "error", err)
 		os.Exit(1)
 	}
 
-	// 4. Setup OBO Exchange with thumbprint binding
+	// Calculate thumbprint for mock binding
 	cert, _ := x509.ParseCertificate(tlsConfig.Certificates[0].Certificate[0])
 	thumbprint := auth.GetCertificateThumbprint(cert)
-	exchange := auth.NewOBOExchange(cfg.OAuthServerType, cfg.OAuthDomain, cfg.OAuthClientID, cfg.OAuthMTLSDomain, thumbprint)
+
+	// 4. Setup OBO Exchange
+	exchange := auth.NewOBOExchange(
+		cfg.OAuthServerType,
+		cfg.OAuthDomain,
+		cfg.OAuthClientID,
+		cfg.OAuthPrivateKeyPath,
+		cfg.OAuthMTLSDomain,
+		thumbprint,
+	)
 
 	// 5. Perform Token Exchange using the Session Context
 	subjectToken := "initial-user-token" 
@@ -66,7 +75,6 @@ func main() {
 	zipCode := "90210"
 	reqBody, _ := json.Marshal(map[string]string{"zip_code": zipCode})
 	
-	// Create request WITH the session context
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://localhost:8443/weather", bytes.NewBuffer(reqBody))
 	if err != nil {
 		logger.Error("Failed to create request", "error", err)

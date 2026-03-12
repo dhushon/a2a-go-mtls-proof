@@ -13,7 +13,10 @@ type Config struct {
 	OAuthServerType        string `mapstructure:"OAUTH_SERVER_TYPE"`
 	OAuthDomain            string `mapstructure:"OAUTH_DOMAIN"`
 	OAuthClientID          string `mapstructure:"OAUTH_CLIENT_ID"`
+	OAuthClientSecret      string `mapstructure:"OAUTH_CLIENT_SECRET"`
 	OAuthMTLSDomain        string `mapstructure:"OAUTH_MTLS_DOMAIN"`
+	OAuthPrivateKeyPath    string `mapstructure:"OAUTH_PRIVATE_KEY_PATH"`
+	A2AServerName          string `mapstructure:"A2A_SERVER_NAME"`
 	AgentObservabilityLevel int    `mapstructure:"AGENT_OBSERVABILITY_LEVEL"`
 }
 
@@ -23,7 +26,10 @@ var globalConfig *Config
 func Load() (*Config, error) {
 	viper.SetConfigFile(".env")
 	viper.SetConfigType("env")
-	viper.AutomaticEnv() // Read from environment variables if they exist
+	viper.AutomaticEnv() 
+
+	// Set Defaults
+	viper.SetDefault("A2A_SERVER_NAME", "localhost")
 
 	// Allow for OAUTH_ prefixes to be correctly mapped
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

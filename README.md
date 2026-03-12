@@ -16,11 +16,14 @@ This project demonstrates a zero-trust, multi-agent communication pattern in Go.
 
 ## Project Structure
 
-- `client/`: Requester agents (e.g., `packing_main.go`).
-    - `pkg/packing/`: Client-exclusive analysis logic.
-- `server/`: Responder agents (e.g., `weather_main.go`).
-    - `pkg/middleware/`: Server-exclusive HTTP security wrappers.
-- `pkg/`: Shared packages (Auth, Context, Logger, Observability, Weather).
+- `client/`: Requester agents.
+    - `hello-world/`: Basic round-trip verification agent.
+    - `packing/`: Packing agent logic and entry point.
+- `server/`: Responder agents.
+    - `hello-world/`: Basic task responder.
+    - `weather/`: Weather probability provider agent.
+    - `middleware/`: Shared HTTP security wrappers (mTLS Binding).
+- `pkg/`: Shared utility packages (Auth, Config, Context, Logger, Observability, Weather).
 - `certs/`: (Generated) Test certificates and keys.
 
 ## Quick Start

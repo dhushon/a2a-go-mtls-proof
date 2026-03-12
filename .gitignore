@@ -19,15 +19,30 @@ server.log
 ehthumbs.db
 Thumbs.db
 
+# Java mess
+.java-version
+
 # Test certificates
 certs/*.key
 certs/*.crt
 certs/*.csr
 certs/*.srl
 certs/*.ext
+certs/*.json
+terraform/*.pem
 
 # Environment
 .env
+*.tfvars
+*.tfvars.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+.java-version
+.terraform.lock.hcl
 
 # Go workspace
 go.work

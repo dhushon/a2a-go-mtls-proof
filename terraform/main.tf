@@ -7,80 +7,92 @@ terraform {
   }
 }
 
-# This assumes you have your Okta provider configured via environment variables
-# (OKTA_ORG_NAME and OKTA_API_TOKEN)
-provider "okta" {}
-
-# 1. Create the Service Application for the Client
+# 1. Create the Service Application for the Client (Requester Agent)
 resource "okta_app_oauth" "client_app" {
-  label                      = "A2A mTLS Proof Client"
+  label                      = "A2A Zero-Trust Agent"
   type                       = "service"
   grant_types                = ["client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange"]
-  token_endpoint_auth_method = "client_secret_basic"
+  token_endpoint_auth_method = "private_key_jwt"
   response_types             = ["token"]
+
+  jwks {
+    kty = "RSA"
+    kid = "tgr8kWQ3CTDlFE8hCMe9EHfMVRE9BvWVuTWrPIpK9sA"
+    e   = "AQAB"
+    n   = "qFOqQ6Maw9TgC9m-32pG8kiSIuAfzYJ8Xay9vOri4npPwIEnqDScdzKfqwV_RJ2mQAthfx0nHUBukxJqac8v-F9Jp97aWUlY__fV47ov5jq3XbCPCe0tHbJ5C0jVGtTClUvyE-AlVwA6dXI1QXsqHCEimTm0pF0d93O3BpiBL4EDy3okebR-RZfqZBCBbN6gNAnVCfiszSAGLkiMw2r77mxEmG02p3dvmPKHOHQKAHAEa9mFYNYz9VTEI20ZBmpBgeLek85KIKuXGDrgCt9Dyhj4U3ss2c5kwnEkz8-S514GcD_-ROWXY1ELLWmCG9dR6H41SCTAVkyoPWOdcnErOw"
+  }
 }
 
 # 2. Create the Custom Authorization Server
 resource "okta_auth_server" "auth_server" {
-  name      = "A2A mTLS Proof Auth Server"
-  audiences = ["api://responder-agent/access"]
+  name      = "A2A Zero-Trust Auth Server"
+  audiences = ["api://a2a-agents"]
 }
 
-# 3. Create a Custom Scope for the API
-resource "okta_auth_server_scope" "api_scope" {
+# 3. Create Custom Scopes for the Agents
+resource "okta_auth_server_scope" "responder_scope" {
   auth_server_id = okta_auth_server.auth_server.id
   name           = "api://responder-agent/access"
-  display_name   = "Access the Responder Agent"
-  description    = "Allows the client to access the responder agent's API."
+  display_name   = "Access Responder Agent"
   consent        = "IMPLICIT"
 }
 
-# 4. Create the 'cnf' Claim
-# This claim will contain the SHA-256 thumbprint of the client certificate.
-# Okta's Expression Language provides access to the certificate from the mTLS handshake.
-resource "okta_auth_server_claim" "cnf_claim" {
+resource "okta_auth_server_scope" "weather_scope" {
+  auth_server_id = okta_auth_server.auth_server.id
+  name           = "api://weather-agent/access"
+  display_name   = "Access Weather Agent"
+  consent        = "IMPLICIT"
+}
+
+# 4. Create the binding claim
+# Renamed to avoid forbidden symbol '#'
+resource "okta_auth_server_claim" "x5t_claim" {
   auth_server_id          = okta_auth_server.auth_server.id
-  name                    = "cnf"
+  name                    = "x5t_S256"
   claim_type              = "RESOURCE"
   value_type              = "EXPRESSION"
-  value                   = "'{'\"x5t#S256\"': tls.clientCertificate.hash_sha256}'"
-  scopes                  = [okta_auth_server_scope.api_scope.name]
+  value                   = "tls.clientCertificate.hash_sha256"
+  scopes                  = [
+    okta_auth_server_scope.responder_scope.name,
+    okta_auth_server_scope.weather_scope.name
+  ]
   always_include_in_token = true
 }
 
 # 5. Create a Policy for the Authorization Server
 resource "okta_auth_server_policy" "api_policy" {
   auth_server_id = okta_auth_server.auth_server.id
-  name           = "API Access Policy"
-  description    = "Policy for clients accessing the API."
+  name           = "Agent Access Policy"
+  description    = "Allows Token Exchange for A2A agents."
   priority       = 1
-  client_whitelist = [
-    okta_app_oauth.client_app.id
-  ]
+  client_whitelist = [okta_app_oauth.client_app.id]
 }
 
-# 6. Create a Policy Rule to Allow the OBO Flow
+data "okta_group" "everyone" {
+  name = "Everyone"
+}
+
+# 6. Create a Policy Rule to Allow the OBO (Token Exchange) Flow
 resource "okta_auth_server_policy_rule" "obo_rule" {
   auth_server_id = okta_auth_server.auth_server.id
   policy_id      = okta_auth_server_policy.api_policy.id
-  name           = "Allow OBO Flow"
+  name           = "Allow Token Exchange"
   priority       = 1
   status         = "ACTIVE"
 
   grant_type_whitelist = ["urn:ietf:params:oauth:grant-type:token-exchange"]
-  scope_whitelist      = [okta_auth_server_scope.api_scope.id]
+  scope_whitelist      = [
+    okta_auth_server_scope.responder_scope.name,
+    okta_auth_server_scope.weather_scope.name
+  ]
+  group_whitelist = [data.okta_group.everyone.id]
 }
 
-# Output the client credentials and the authorization server's metadata URL
+# Outputs
 output "client_id" {
   value = okta_app_oauth.client_app.client_id
 }
 
-output "client_secret" {
-  value     = okta_app_oauth.client_app.client_secret
-  sensitive = true
-}
-
-output "authorization_server_metadata_url" {
+output "auth_server_issuer" {
   value = okta_auth_server.auth_server.issuer
 }
