@@ -4,11 +4,15 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"log"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
+	"a2a-go-mtls-proof/pkg/agentcontext"
 	"a2a-go-mtls-proof/pkg/auth"
+	"a2a-go-mtls-proof/pkg/logger"
+	"a2a-go-mtls-proof/pkg/observability"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -49,42 +53,64 @@ func MTLSBindingMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// It's still a good idea to validate the standard claims, like expiry and issuer
-		// ...
-
 		// 3. Perform Binding Check: Compare cert thumbprint to the 'cnf' claim
 		fingerprint := sha256.Sum256(clientCert.Raw)
 		encodedThumbprint := base64.RawURLEncoding.EncodeToString(fingerprint[:])
 
 		if claims.Confirmation.X5tS256 != encodedThumbprint {
-			log.Printf("Cert Thumbprint: %s", encodedThumbprint)
-			log.Printf("Token cnf: %s", claims.Confirmation.X5tS256)
+			logger.Warn("Certificate-Token binding mismatch", 
+				"cert_thumbprint", encodedThumbprint,
+				"token_cnf", claims.Confirmation.X5tS256)
 			http.Error(w, "Certificate-Token binding mismatch", http.StatusForbidden)
 			return
 		}
 
 		// Success: Identity is confirmed for both the service (mTLS) and the user (OBO Token)
-		// We can add the user's identity to the request context for the handler
-		log.Printf("Successfully validated token for subject: %s", claims.Subject)
+		logger.Info("Successfully validated token", "subject", claims.Subject)
 		next.ServeHTTP(w, r)
 	})
 }
 
 func taskHandler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	
+	// Extract metadata from context (hydrated by middleware)
+	md, _ := agentcontext.From(r.Context())
+	
+	logger.Info("Processing task", "session_id", md.SessionID, "trace_id", md.TraceID)
+	
+	// Simulate "agentic" work
+	time.Sleep(100 * time.Millisecond)
+	
+	// Record metrics
+	observability.RecordStep(r.Context(), float64(time.Since(start).Milliseconds()))
+	observability.RecordUsage(r.Context(), 500, 0.005) // Fake 500 tokens, $0.005 cost
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "task completed"})
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":     "task completed",
+		"session_id": md.SessionID,
+	})
 }
 
 func main() {
+	// Initialize Observability
+	if err := observability.Init("responder-agent"); err != nil {
+		logger.Error("Failed to initialize observability", "error", err)
+	}
+
 	tlsConfig, err := auth.GetServerTLSConfig()
 	if err != nil {
-		log.Fatalf("Failed to get TLS config: %v", err)
+		logger.Error("Failed to get TLS config", "error", err)
+		os.Exit(1)
 	}
 
 	// Create a new ServeMux and apply the middleware
 	mux := http.NewServeMux()
-	finalHandler := http.HandlerFunc(taskHandler)
-	mux.Handle("/task", MTLSBindingMiddleware(finalHandler))
+	
+	// Chain: agentcontext (metadata extraction) -> MTLSBinding (auth) -> taskHandler
+	finalHandler := agentcontext.Middleware(MTLSBindingMiddleware(http.HandlerFunc(taskHandler)))
+	mux.Handle("/task", finalHandler)
 
 	// Create the HTTPS server
 	server := &http.Server{
@@ -93,8 +119,9 @@ func main() {
 		TLSConfig: tlsConfig,
 	}
 
-	log.Println("Starting server on https://localhost:8443")
+	logger.Info("Starting server on https://localhost:8443")
 	if err := server.ListenAndServeTLS("", ""); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		logger.Error("Server failed to start", "error", err)
+		os.Exit(1)
 	}
 }

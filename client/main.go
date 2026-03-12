@@ -9,11 +9,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
+	"os"
 	"time"
 
+	"a2a-go-mtls-proof/pkg/agentcontext"
 	"a2a-go-mtls-proof/pkg/auth"
+	"a2a-go-mtls-proof/pkg/logger"
+	"a2a-go-mtls-proof/pkg/observability"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -27,8 +30,6 @@ type Claims struct {
 }
 
 // In a real OBO flow, this function would make a request to an identity provider.
-// For this example, we'll simulate the IdP's behavior by generating a self-signed,
-// certificate-bound token.
 func getOBOToken(userSubject string, tlsConfig *tls.Config) (string, error) {
 	// 1. Calculate the certificate thumbprint
 	if len(tlsConfig.Certificates) == 0 || len(tlsConfig.Certificates[0].Certificate) == 0 {
@@ -58,59 +59,74 @@ func getOBOToken(userSubject string, tlsConfig *tls.Config) (string, error) {
 		},
 	}
 
-	// 3. Create and sign the token.
-	// For this example, we'll just create a token without a signature, as the server
-	// is configured to not verify it (for simplicity). In a real-world scenario,
-	// the IdP would sign this with its private key.
 	token := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
 	tokenString, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
 	if err != nil {
 		return "", fmt.Errorf("failed to sign token: %w", err)
 	}
 
-	log.Printf("Generated OBO token with cnf: %s", encodedThumbprint)
+	logger.Info("Generated OBO token", "cnf", encodedThumbprint)
 	return tokenString, nil
 }
 
 func main() {
+	// Initialize Observability
+	if err := observability.Init("requester-agent"); err != nil {
+		logger.Error("Failed to initialize observability", "error", err)
+	}
+
 	tlsConfig, err := auth.GetClientTLSConfig()
 	if err != nil {
-		log.Fatalf("Failed to get TLS config: %v", err)
+		logger.Error("Failed to get TLS config", "error", err)
+		os.Exit(1)
 	}
 
 	// 2. The "On-Behalf-Of" Token Exchange
-	// In a real scenario, the user's identity would come from an incoming request.
 	userSubject := "user-12345"
 	oboToken, err := getOBOToken(userSubject, tlsConfig)
 	if err != nil {
-		log.Fatalf("Failed to get OBO token: %v", err)
+		logger.Error("Failed to get OBO token", "error", err)
+		os.Exit(1)
 	}
 
-	// 3. Call the Responder Agent
+	// 3. Prepare Metadata for context propagation
+	md := agentcontext.Metadata{
+		SessionID: "session-abc-123",
+		TraceID:   "trace-xyz-789",
+		ParentID:  "requester-agent",
+	}
+
+	// 4. Call the Responder Agent
 	client := &http.Client{
 		Transport: &http.Transport{TLSClientConfig: tlsConfig},
 	}
 
-	reqBody, _ := json.Marshal(map[string]string{"task": "analyze"})
+	reqBody, _ := json.Marshal(map[string]string{"task": "hello-world-round-trip"})
 	req, err := http.NewRequest("POST", "https://localhost:8443/task", bytes.NewBuffer(reqBody))
 	if err != nil {
-		log.Fatalf("Failed to create request: %v", err)
+		logger.Error("Failed to create request", "error", err)
+		os.Exit(1)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+oboToken)
 	req.Header.Set("Content-Type", "application/json")
+	
+	// Inject Metadata into outgoing headers
+	md.InjectIntoRequest(req)
 
-	log.Println("Sending request to https://localhost:8443/task")
+	logger.Info("Sending request to https://localhost:8443/task", "session_id", md.SessionID)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatalf("Failed to send request: %v", err)
+		logger.Error("Failed to send request", "error", err)
+		os.Exit(1)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalf("Failed to read response body: %v", err)
+		logger.Error("Failed to read response body", "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("Server Response: %s (Status: %s)", string(body), resp.Status)
+	logger.Info("Server Response", "body", string(body), "status", resp.Status)
 }
